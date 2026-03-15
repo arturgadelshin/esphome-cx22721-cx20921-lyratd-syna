@@ -14,7 +14,7 @@ esptool==4.8.1
 click==8.1.7
 esphome-dashboard==20250514.0
 aioesphomeapi==32.2.3
-zeroconf==0.147.0
+zeroconf==0.148.0
 puremagic==1.29
 ruamel.yaml==0.18.14 # dashboard_import
 esphome-glyphsets==0.2.0
