@@ -199,6 +199,7 @@ media_player:
 # =============== MICRO WAKE WORD ===============
 micro_wake_word:
   id: mww
+  stop_after_detection: false
   models:
     - model: ${model_2}
       id: ${id_2}
@@ -211,15 +212,6 @@ micro_wake_word:
 
   # vad:
   #   probability_cutoff: 0.02
-  # on_wake_word_detected:
-  #   - media_player.speaker.play_on_device_media_file:
-  #       media_file: wake_sound_file
-  #       announcement: true
-  #   - wait_until:
-  #       not:
-  #         - media_player.is_announcing:
-  #   - voice_assistant.start:
-  #       wake_word: !lambda return wake_word;
   on_wake_word_detected:
     - logger.log: "Wake word detected, checking voice assistant state."
     - if:
