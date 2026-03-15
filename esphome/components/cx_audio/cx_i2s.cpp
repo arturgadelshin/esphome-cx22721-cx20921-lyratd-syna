@@ -64,7 +64,7 @@ void CXI2SMicrophone::start() {
 
   ESP_LOGI(TAG, "Starting microphone task...");
 
-  this->flush_buffers();
+  // this->flush_buffers(); // УБРАТЬ: this->flush_buffers();
 
   this->task_running_ = true;
   this->state_ = microphone::STATE_RUNNING;
@@ -119,6 +119,8 @@ void CXI2SMicrophone::flush_buffers() {
 
 void CXI2SMicrophone::mic_task(void *arg) {
   CXI2SMicrophone *self = static_cast<CXI2SMicrophone *>(arg);
+  // Flush buffers здесь, а не в start()
+  self->flush_buffers();
 
   ESP_LOGI(TAG, "Mic task running on core %d", xPortGetCoreID());
 

@@ -129,7 +129,7 @@ speaker:
   - platform: cx_i2s
     id: external_speaker
     cx_audio_id: my_cx_audio
-    sample_rate: "48000"
+    sample_rate: "16000"
     num_channels: "2"
 
   - id: mixing_speaker
@@ -143,13 +143,13 @@ speaker:
   - platform: resampler
     id: announcement_resampling_speaker
     output_speaker: announcement_mixing_input
-    sample_rate: 48000
+    sample_rate: 16000
     num_channels: "2"   # Рекомендуется также добавить здесь для ясности
 
   - platform: resampler
     id: media_resampling_speaker
     output_speaker: media_mixing_input
-    sample_rate: 48000
+    sample_rate: 16000
     num_channels: "2"   # Рекомендуется также добавить здесь для ясности
 
 microphone:
@@ -172,13 +172,13 @@ media_player:
       speaker: announcement_resampling_speaker
       num_channels: "2"  # Обязательно в кавычках
       format: WAV     # FLAC is the least processor intensive codec
-      sample_rate: 48000
+      sample_rate: 16000
 
     media_pipeline:
       speaker: media_resampling_speaker
       num_channels: "2"  # Обязательно в кавычках
       format: WAV     # FLAC is the least processor intensive codec
-      sample_rate: 48000
+      sample_rate: 16000
 
     files:
       - id: wake_sound_file
@@ -195,7 +195,7 @@ media_player:
     on_idle:
       - delay: 750ms
       - switch.turn_off: dac_mode
-
+      - micro_wake_word.start:
 # =============== MICRO WAKE WORD ===============
 micro_wake_word:
   id: mww
@@ -224,10 +224,12 @@ micro_wake_word:
     - logger.log: "Wake word detected, checking voice assistant state."
     - if:
         condition:
-          voice_assistant.is_running:
+          or:
+            - voice_assistant.is_running:
+            - media_player.is_announcing:
         then:
-          - voice_assistant.stop:
-          - logger.log: "Voice Assistant is running, stopping it."
+          # - voice_assistant.stop:
+          - logger.log: "Ignoring wake word - busy"
         # Stop any other media player announcement
         else:
           - logger.log: "Voice Assistant is NOT running, checking for announcements."
@@ -378,7 +380,7 @@ light:
     name: "${friendly_name} Light"
     pin: GPIO27
     num_leds: 24
-    rmt_channel: 2  # Добавлено - канал RMT от 0 до 7
+    rmt_channel: 2  # 2,3,5
     rgb_order: GRB
     chipset: ws2812
     default_transition_length: 0.5s
