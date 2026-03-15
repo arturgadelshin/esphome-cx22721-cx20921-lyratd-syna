@@ -5,6 +5,9 @@
 #include "esphome/components/speaker/speaker.h"
 #include "cx_audio.h"
 #include <vector>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 namespace esphome {
 namespace cx_i2s {
@@ -14,7 +17,7 @@ class CXI2SMicrophone : public microphone::Microphone, public Component {
   void setup() override;
   void start() override;
   void stop() override;
-  void loop() override;
+  void loop() override {}
   void set_cx_audio(cx_audio::CXAudio *parent) { this->parent_ = parent; }
   bool is_running() const { return this->state_ == microphone::STATE_RUNNING; }
   void publish_data(const std::vector<uint8_t> &data);
@@ -24,7 +27,15 @@ class CXI2SMicrophone : public microphone::Microphone, public Component {
 
  protected:
   cx_audio::CXAudio *parent_;
-  float mic_gain_{24.0f};  // Default 24dB
+  float mic_gain_{24.0f};
+
+  TaskHandle_t mic_task_handle_{nullptr};
+  SemaphoreHandle_t stop_semaphore_{nullptr};
+  volatile bool task_running_{false};
+
+  static void mic_task(void *arg);
+  void read_loop();
+  void flush_buffers();
 };
 
 class CXI2SSpeaker : public speaker::Speaker, public Component {

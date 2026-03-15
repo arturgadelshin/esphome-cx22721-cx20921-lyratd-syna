@@ -1,0 +1,562 @@
+substitutions:
+  name: "ec4-4-16-gh"
+  friendly_name: "ec4-4-16-gh"
+  wifi_ssid: "Keenetic_Garazh"
+  wifi_password: "96925980"
+  wifi_ip: "192.168.1.89"
+  ota_password: "7xQjRMheuKffc4fI"
+  model_1: https://raw.githubusercontent.com/arturgadelshin/wakeword_miluy_dom/refs/heads/main/stream_state_internal_quant_4_16_gh.json
+  id_1: muliy_dom_4_16_gh
+  model_2: https://raw.githubusercontent.com/arturgadelshin/wakeword_miluy_dom_2/refs/heads/main/stream_state_internal_quant_4_16_gh.json
+  id_2: muliy_dom2_4_16_gh
+
+esphome:
+  name: "ec4-4-16-gh"
+  min_version: 2023.11.0
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    - priority: -100
+      then:
+        - light.turn_on:
+            id: led_ring
+            effect: none
+        - delay: 1s
+        - wait_until:
+            condition:
+              wifi.connected:
+        - light.turn_on:
+            id: led_ring
+            effect: none
+            red: 0%
+            blue: 100%
+            green: 0%
+        - wait_until:
+            condition:
+              api.connected:
+        - delay: 1.5s
+        - micro_wake_word.start:
+        - script.execute: reset_led
+        - output.turn_on: pa_ctrl
+
+esp32:
+  board: esp32dev
+  flash_size: 16MB
+  partitions: partitions.csv
+  framework:
+    type: esp-idf
+    version: 4.4.8
+    platform_version: 5.4.0
+    sdkconfig_options:
+      # CONFIG_FREERTOS_MAX_TASK_NAME_LEN: "16"
+      # CONFIG_LOG_MAXIMUM_LEVEL: "3"
+      CONFIG_FREERTOS_NUMBER_OF_CORES: "2"
+      # CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ: "240"
+      # CONFIG_ESP32_WIFI_IRAM_OPT: "y"
+      # CONFIG_ESP32_WIFI_RX_IRAM_OPT: "y"
+      # CONFIG_I2S_ISR_IRAM_LEVEL: "3"
+      # CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+      # CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE: "4096"
+      CONFIG_ESP32_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM_BOOT_INIT: "y"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      # CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
+
+external_components:
+  # equivalent shorthand for GitHub
+  - source:
+      type: local
+      path: esphome/components
+    components: [cx_audio, cx_i2s]
+
+psram:
+  mode: quad
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+
+api:
+  reboot_timeout: 1min
+
+ota:
+  - platform: esphome
+    password: 7xQjRMheuKffc4fI
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "$ IP Address"
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  use_address: ${wifi_ip}
+  power_save_mode: none
+  # Добавить DNS
+  # manual_ip:
+  #   static_ip: 192.168.0.107
+  #   gateway: 192.168.0.1
+  #   subnet: 255.255.255.0
+  #   dns1: 8.8.8.8
+  #   dns2: 1.1.1.1
+
+  ap:
+    ssid: ${name}
+    password: "12345678"
+
+captive_portal:
+
+output:
+  - platform: gpio
+    id: pa_ctrl
+    pin: GPIO22 #
+
+  - platform: gpio
+    id: dac_ctrl
+    pin: GPIO4 #
+
+  - platform: gpio
+    id: reset_dsp
+    pin: GPIO19 # Сброс DSP CX20921
+
+cx_audio:
+  id: my_cx_audio
+  use_firmware: false
+
+speaker:
+  - platform: cx_i2s
+    id: external_speaker
+    cx_audio_id: my_cx_audio
+    # sample_rate: "48000"
+    # num_channels: "2"
+
+  # - id: mixing_speaker
+  #   platform: mixer
+  #   output_speaker: external_speaker
+  #   source_speakers:
+  #     - id: announcement_mixing_input
+  #     - id: media_mixing_input
+  #   num_channels: "2"  #
+
+  # - platform: resampler
+  #   id: announcement_resampling_speaker
+  #   output_speaker: announcement_mixing_input
+  #   sample_rate: 48000
+  #   num_channels: "2"   # Рекомендуется также добавить здесь для ясности
+
+  # - platform: resampler
+  #   id: media_resampling_speaker
+  #   output_speaker: media_mixing_input
+  #   sample_rate: 48000
+  #   num_channels: "2"   # Рекомендуется также добавить здесь для ясности
+
+microphone:
+  - platform: cx_i2s
+    id: external_mic
+    mic_gain: -38.0 # 0,3,6,9,12,15,18,21,24,27,30 #-25
+    cx_audio_id: my_cx_audio
+
+media_player:
+  - platform: speaker
+    name: "Speaker Media Player"
+    id: speaker_media_player_id
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 1.0
+    # buffer_size: 50000
+    # task_stack_in_psram: true
+
+    announcement_pipeline:
+      speaker: external_speaker
+      num_channels: "2"  # Обязательно в кавычках
+      # format: WAV     # FLAC is the least processor intensive codec
+      sample_rate: 48000
+
+    # media_pipeline:
+    #   speaker: media_resampling_speaker
+    #   num_channels: "2"  # Обязательно в кавычках
+    #   format: WAV     # FLAC is the least processor intensive codec
+    #   sample_rate: 48000
+
+    files:
+      - id: wake_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/awake_2.wav
+      - id: error_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/error_3.wav
+
+    on_play:
+      - switch.turn_on: dac_mode
+
+    on_announcement:
+      - switch.turn_on: dac_mode
+
+    on_idle:
+      - delay: 750ms
+      - switch.turn_off: dac_mode
+
+# =============== MICRO WAKE WORD ===============
+micro_wake_word:
+  stop_after_detection: true
+  id: mww
+  models:
+    - model: ${model_2}
+      id: ${id_2}
+    # - model: ${model_1}
+    #   id: ${id_1}
+  microphone:
+    microphone: external_mic
+    channels: 0
+    gain_factor: 2
+
+  # vad:
+  #   probability_cutoff: 0.02
+  on_wake_word_detected:
+    - media_player.speaker.play_on_device_media_file:
+        media_file: wake_sound_file
+        announcement: true
+    - wait_until:
+        not:
+          - media_player.is_announcing:
+    - delay: 500ms
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+# =============== VOICE ASSISTANT ===============
+voice_assistant:
+  id: voice_asst
+  microphone:
+    microphone: external_mic
+    channels: 0
+    gain_factor: 1
+  micro_wake_word: mww
+  media_player: speaker_media_player_id
+  noise_suppression_level: 0 # Оставил 4 пока что
+  # auto_gain: 0dBFS # Было 31 31dBFS
+  volume_multiplier: 0.1 #25.0
+
+  on_listening:
+    - light.turn_on:
+        id: led_ring
+        blue: 0%
+        red: 0%
+        green: 100%
+        brightness: 80%
+        effect: none
+
+  on_end:
+    - micro_wake_word.stop
+    - delay: 250ms
+    - micro_wake_word.start:
+    - script.execute: reset_led
+
+  # on_idle:
+  #   - micro_wake_word.stop
+  #   - delay: 250ms
+  #   - micro_wake_word.start
+
+  on_error:
+    - light.turn_on:
+        id: led_ring
+        blue: 0%
+        red: 100%
+        green: 0%
+        brightness: 80%
+        effect: none
+    - media_player.speaker.play_on_device_media_file:
+        media_file: error_sound_file
+        announcement: true
+    - wait_until:
+        not:
+          - media_player.is_announcing:
+    - delay: 500ms
+    - micro_wake_word.stop
+    - delay: 250ms
+    - micro_wake_word.start:
+    - script.execute: reset_led
+
+# =============== SCRIPTS ===============
+script:
+  - id: reset_led
+    mode: restart
+    then:
+      - delay: 50ms
+      - if:
+          condition:
+            switch.is_on: night_mode
+          then:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 30%
+                effect: none
+          else:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 80%
+                effect: none
+
+# =============== SWITCHES ===============
+switch:
+  - platform: template
+    name: Night Mode Switch
+    id: night_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - script.execute: reset_led
+    on_turn_off:
+      - script.execute: reset_led
+
+  - platform: template
+    name: Amp AMP
+    id: amp_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: pa_ctrl
+    on_turn_off:
+      - output.turn_off: pa_ctrl
+
+  - platform: template
+    name: Mute DAC
+    id: dac_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: dac_ctrl
+    on_turn_off:
+      - output.turn_off: dac_ctrl
+
+  - platform: template
+    name: Reset DSP
+    id: reset_dsp_cx
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: reset_dsp
+    on_turn_off:
+      - output.turn_off: reset_dsp
+
+# =============== LIGHT ===============
+light:
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "${friendly_name} Light"
+    pin: GPIO27
+    num_leds: 24
+    rmt_channel: 2  # Добавлено - канал RMT от 0 до 7
+    rgb_order: GRB
+    chipset: ws2812
+    default_transition_length: 0s
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+      - addressable_twinkle:
+          name: "Working"
+          twinkle_probability: 80%
+          progress_interval: 50ms
+      - addressable_color_wipe:
+          name: "Wakeword"
+          colors:
+            - red: 0%
+              green: 100%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 40ms
+          reverse: false
+      - addressable_color_wipe:
+          name: "Power"
+          colors:
+            - red: 100%
+              green: 0%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 50ms
+          reverse: false
+
+# =============== SENSOR ===============
+
+sensor:
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal, dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  - platform: copy # Reports the WiFi signal strength in %
+    source_id: wifi_signal_db
+    name: "WiFi Signal, %"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+    device_class: ""
+
+# =============== SELECT ===============
+select:
+  # - platform: template
+  #   name: "Sensitivity Muliy_dom"
+  #   optimistic: true
+  #   initial_option: 0.03 sensitive
+  #   restore_value: true
+  #   entity_category: config
+  #   options:
+  #     - 0.01 sensitive
+  #     - 0.02 sensitive
+  #     - 0.03 sensitive
+  #     - 0.04 sensitive
+  #     - 0.05 sensitive
+  #     - 0.10 sensitive
+  #     - 0.20 sensitive
+  #     - 0.30 sensitive
+  #     - 0.40 sensitive
+  #     - 0.50 sensitive
+  #     - 0.55 sensitive
+  #     - 0.60 sensitive
+  #     - 0.65 sensitive
+  #     - 0.70 sensitive
+  #     - 0.75 sensitive
+  #     - 0.80 sensitive
+  #     - 0.85 sensitive
+  #     - 0.90 sensitive
+  #     - 0.95 sensitive
+  #     - 0.98 sensitive
+  #   on_value:
+  #     # Sets specific wake word probabilities computed for each particular model
+  #     # Note probability cutoffs are set as a quantized uint8 value, each comment has the corresponding floating point cutoff
+  #     # False Accepts per Hour values are tested against all units and channels from the Dinner Party Corpus.
+  #     # These cutoffs apply only to the specific models included in the firmware: okay_nabu@20241226.3, hey_jarvis@v2, hey_mycroft@v2
+  #     lambda: |-
+  #       if (x == "0.01 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(3);    // 0.05 * 255 = 25.5 -> 13
+  #       } else if (x == "0.02 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(6);    // 0.10 * 255 = 26
+  #       } else if (x == "0.03 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(9);    // 0.20 * 255 = 51
+  #       } else if (x == "0.04 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(11);    // 0.30 * 255 = 76.5 -> 76
+  #       } else if (x == "0.05 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(13);    // 0.30 * 255 = 76.5 -> 76
+  #       } else if (x == "0.10 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(26);    // 0.10 * 255 = 26
+  #       } else if (x == "0.20 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(51);    // 0.20 * 255 = 51
+  #       } else if (x == "0.30 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(76);    // 0.30 * 255 = 76.5 -> 76
+  #       } else if (x == "0.40 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(102);   // 0.40 * 255 = 102
+  #       } else if (x == "0.50 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(128);   // 0.55 * 255 = 140.25 -> 140
+  #       } else if (x == "0.55 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(140);   // 0.55 * 255 = 140.25 -> 140
+  #       } else if (x == "0.60 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(153);  // 0.60 * 255 = 153
+  #       } else if (x == "0.65 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(166);  // 0.65 * 255 = 165.75 -> 166
+  #       } else if (x == "0.70 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(179);  // 0.7 * 255 = 178.5 -> 179
+  #       } else if (x == "0.75 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(191);  // 0.75 * 255 = 191.25 -> 191
+  #       } else if (x == "0.80 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(204);  // 0.8 * 255 = 204
+  #       } else if (x == "0.85 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(217);  // 0.85 * 255 = 216.75 -> 217
+  #       } else if (x == "0.90 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(230);  // 0.9 * 255 = 229.5 -> 230
+  #       } else if (x == "0.95 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(242);  // 0.95 * 255 = 242.25 -> 242
+  #       } else if (x == "0.98 sensitive") {
+  #         id(muliy_dom_4_16_gh).set_probability_cutoff(250);  // 0.98 * 255 = 249.9 -> 250
+  #       }
+
+  - platform: template
+    name: "Sensitivity Muliy_dom_2"
+    optimistic: true
+    initial_option: 0.40 sensitive
+    restore_value: true
+    entity_category: config
+    options:
+      - 0.01 sensitive
+      - 0.02 sensitive
+      - 0.03 sensitive
+      - 0.04 sensitive
+      - 0.05 sensitive
+      - 0.10 sensitive
+      - 0.20 sensitive
+      - 0.30 sensitive
+      - 0.40 sensitive
+      - 0.50 sensitive
+      - 0.55 sensitive
+      - 0.60 sensitive
+      - 0.65 sensitive
+      - 0.70 sensitive
+      - 0.75 sensitive
+      - 0.80 sensitive
+      - 0.85 sensitive
+      - 0.90 sensitive
+      - 0.95 sensitive
+      - 0.98 sensitive
+    on_value:
+      # Sets specific wake word probabilities computed for each particular model
+      # Note probability cutoffs are set as a quantized uint8 value, each comment has the corresponding floating point cutoff
+      # False Accepts per Hour values are tested against all units and channels from the Dinner Party Corpus.
+      # These cutoffs apply only to the specific models included in the firmware: okay_nabu@20241226.3, hey_jarvis@v2, hey_mycroft@v2
+      lambda: |-
+        if (x == "0.01 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(3);    // 0.05 * 255 = 25.5 -> 13
+        } else if (x == "0.02 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(6);    // 0.10 * 255 = 26
+        } else if (x == "0.03 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(9);    // 0.20 * 255 = 51
+        } else if (x == "0.04 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(11);    // 0.30 * 255 = 76.5 -> 76
+        } else if (x == "0.05 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(13);    // 0.30 * 255 = 76.5 -> 76
+        } else if (x == "0.10 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(26);    // 0.10 * 255 = 26
+        } else if (x == "0.20 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(51);    // 0.20 * 255 = 51
+        } else if (x == "0.30 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(76);    // 0.30 * 255 = 76.5 -> 76
+        } else if (x == "0.40 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(102);   // 0.40 * 255 = 102
+        } else if (x == "0.50 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(128);   // 0.55 * 255 = 140.25 -> 140
+        } else if (x == "0.55 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(140);   // 0.55 * 255 = 140.25 -> 140
+        } else if (x == "0.60 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(153);  // 0.60 * 255 = 153
+        } else if (x == "0.65 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(166);  // 0.65 * 255 = 165.75 -> 166
+        } else if (x == "0.70 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(179);  // 0.7 * 255 = 178.5 -> 179
+        } else if (x == "0.75 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(191);  // 0.75 * 255 = 191.25 -> 191
+        } else if (x == "0.80 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(204);  // 0.8 * 255 = 204
+        } else if (x == "0.85 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(217);  // 0.85 * 255 = 216.75 -> 217
+        } else if (x == "0.90 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(230);  // 0.9 * 255 = 229.5 -> 230
+        } else if (x == "0.95 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(242);  // 0.95 * 255 = 242.25 -> 242
+        } else if (x == "0.98 sensitive") {
+          id(muliy_dom2_4_16_gh).set_probability_cutoff(250);  // 0.98 * 255 = 249.9 -> 250
+        }
+
+# =============== BUTTON ===============
+button:
+  - platform: restart
+    name: "Restart module"
