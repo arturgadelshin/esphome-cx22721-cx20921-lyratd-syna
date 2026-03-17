@@ -1,0 +1,636 @@
+substitutions:
+  name: "ec4-1-1-gh"
+  friendly_name: "ec4-1-1-gh"
+
+esphome:
+  name: "ec4-1-1-gh"
+  min_version: 2023.11.0
+  platformio_options:
+    #board_build.partitions: partitions_no_ota.csv
+    board_build.flash_mode: dio
+  on_boot:
+    - priority: -100
+      then:
+        - light.turn_on:
+            id: led_ring
+            effect: power
+        - delay: 1s
+        - wait_until:
+            condition:
+              wifi.connected:
+        - light.turn_on:
+            id: led_ring
+            effect: Working
+            red: 0%
+            blue: 100%
+            green: 0%
+        - wait_until:
+            condition:
+              api.connected:
+        - delay: 1.5s
+        - if:
+            condition:
+              lambda: return id(wake_word_engine_location).state == "On device";
+            then:
+              - logger.log: "Starting 'On device' mode"
+              - micro_wake_word.start:
+            else:
+              - logger.log: "Starting 'In Home Assistant' mode"
+              - voice_assistant.start_continuous:
+        - script.execute: reset_led
+        - output.turn_on: pa_ctrl
+
+esp32:
+  board: esp32dev
+  flash_size: 16MB
+  partitions: partitions.csv
+  framework:
+    type: esp-idf
+    version: 4.4.8
+    platform_version: 5.4.0
+    sdkconfig_options:
+      CONFIG_FREERTOS_MAX_TASK_NAME_LEN: "16"
+      CONFIG_LOG_MAXIMUM_LEVEL: "3"
+      CONFIG_FREERTOS_NUMBER_OF_CORES: "2"
+      CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ: "160"
+      CONFIG_ESP32_WIFI_IRAM_OPT: "y"
+      CONFIG_ESP32_WIFI_RX_IRAM_OPT: "y"
+      CONFIG_I2S_ISR_IRAM_LEVEL: "3"
+      CONFIG_ESP_MAIN_TASK_STACK_SIZE: "8192"
+      CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE: "4096"
+      CONFIG_ESP32_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM_BOOT_INIT: "y"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
+
+#external_components:
+#  # equivalent shorthand for GitHub
+#  - source:
+#      type: git
+#      url: https://github.com/apbodrov/esphome-cx22721-cx20921-lyratd-syna
+#      ref: dev
+#    components: [cx_audio, cx_i2s]
+    
+external_components:
+  # equivalent shorthand for GitHub
+  - source:
+      type: local
+      path: esphome/components
+    components: [cx_audio, cx_i2s]
+
+psram:
+  mode: quad
+  speed: 80MHz
+
+logger:
+  #level: DEBUG
+
+api:
+  reboot_timeout: 1min
+
+ota:
+  - platform: esphome
+    password: "cb0394c5e1ee943710bb14860f793c5"
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "$ IP Address"
+
+time:
+  platform: homeassistant
+  id: homeassistant_time
+
+wifi:
+  ssid: "Keenetic_Garazh"
+  password: "96925980"
+  #ssid: "DOMRU_052A"
+  #password: "28918851"
+  use_address: 192.168.0.118
+  power_save_mode: none
+  # Добавить DNS
+  # manual_ip:
+  #   static_ip: 192.168.0.107
+  #   gateway: 192.168.0.1
+  #   subnet: 255.255.255.0
+  #   dns1: 8.8.8.8
+  #   dns2: 1.1.1.1
+
+  ap:
+    ssid: "ec4-1-1-gH"
+    password: "12345678"
+
+captive_portal:
+  
+#i2c:
+#  id: bus_i2c
+#  sda: GPIO18 # SDA
+#  scl: GPIO23 # SCL
+#  scan: true
+#  sda_pullup_enabled: true
+#  scl_pullup_enabled: true
+#  frequency: 400kHz
+
+output:
+  - platform: gpio
+    id: pa_ctrl
+    pin: GPIO22 # Нужно дать 1, чтобы включить Speaker
+  
+  - platform: gpio
+    id: dac_ctrl
+    pin: GPIO4 # Не понятно, т.к. линия двунаправленная
+
+  - platform: gpio
+    id: reset_dsp
+    pin: GPIO19 # Сброс DSP CX20921
+    
+
+cx_audio:
+  id: my_cx_audio
+  use_firmware: true
+
+#audio_adc:
+#  - platform: cx20921
+#   id: cx20921_adc
+#    bits_per_sample: 16bit # 8, 16, 24
+#    sample_rate: 16000 # 8kHz, 16kHz, 24kHz, 32kHz, 44.1kHz, 48kHz, 96kHz,
+#    mic_gain: "24db" # Analog gain = 6dB to 24dB with 1dB steps
+    #Digital gain = –74dB to 12dB with 0.125dB steps
+
+#audio_dac:
+#  - platform: cx22721 # или 20721 по схеме допускается, по факту стоит 22721
+#    id: cx22721_dac
+#    use_mclk: true 
+#    address: 0x18 # Не нашел, оставил стандартный
+#    bits_per_sample: 16bit # 8/16/24
+#   sample_rate: 48000
+#   i2c_id: bus_i2c 
+
+#i2s_audio:
+#  - id: codec
+#    i2s_lrclk_pin: GPIO25 #
+#    i2s_bclk_pin: GPIO5 #
+#    i2s_mclk_pin: GPIO0 #
+#  - id: mic_adc
+#    i2s_tx_lrclk_pin: GPIO32 # DSP_I2C_LRCK
+#    i2s_tx_bclk_pin: GPIO33  # DSP_I2S_BCLK
+#esphome-cx22721-cx20921-lyratd-syna
+#speaker:
+#  - platform: i2s_audio
+#    id: external_speaker
+#    dac_type: external
+#    i2s_audio_id: codec
+#    i2s_dout_pin: GPIO26 #
+#    sample_rate: 48000
+#    bits_per_sample: 16bit
+#    channel: left
+#    buffer_duration: 1000ms
+#    audio_dac: cx22721_dac
+
+speaker:
+  - platform: cx_i2s
+    id: external_speaker
+    cx_audio_id: my_cx_audio
+    sample_rate: "48000"
+    num_channels: "2"
+
+  - id: mixing_speaker
+    platform: mixer
+    output_speaker: external_speaker
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+    num_channels: "2"  #
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: 48000 
+    num_channels: "2"   # Рекомендуется также добавить здесь для ясности
+    
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: 48000 
+    num_channels: "2"   # Рекомендуется также добавить здесь для ясности
+
+#microphone:
+ # - platform: i2s_audio
+#    id: external_mic
+ #   adc_type: external
+ #   i2s_audio_id: mic_adc
+#    i2s_din_pin: GPIO35 # DSP_I2S_DO
+ #   correct_dc_offset: false
+ #   pdm: false
+
+microphone:
+  - platform: cx_i2s
+    id: external_mic
+    mic_gain: 0.0 # 0,3,6,9,12,15,18,21,24,27,30 #15норм
+    cx_audio_id: my_cx_audio
+
+media_player:
+  - platform: speaker
+    name: "Speaker Media Player"
+    id: speaker_media_player_id
+    #internal: False
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 0.85
+    #buffer_size: 2000000
+    
+    #task_stack_in_psram: true
+    announcement_pipeline:
+      speaker: announcement_resampling_speaker
+      num_channels: "2"  # Обязательно в кавычках
+      format: WAV     # FLAC is the least processor intensive codec
+      sample_rate: 48000
+
+    media_pipeline:
+      speaker: media_resampling_speaker
+      num_channels: "2"  # Обязательно в кавычках
+      format: WAV     # FLAC is the least processor intensive codec
+      sample_rate: 48000
+
+    files:
+      - id: wake_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/awake_2.wav
+      - id: error_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/error_3.wav
+
+    on_state: # Было до 01.10.25
+      - if:
+          condition:
+            and:
+              - not:
+                  voice_assistant.is_running:
+              - not:
+                  media_player.is_announcing:
+          then:
+            - mixer_speaker.apply_ducking:
+                id: media_mixing_input
+                decibel_reduction: 0
+                duration: 0.5s
+     
+    on_announcement:
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20 # Приглушить
+          duration: 0.0s
+      #- microphone.mute: external_mic
+
+# =============== MICRO WAKE WORD ===============
+micro_wake_word:
+  id: mww
+  #stop_after_detection: false
+  models:
+    - model: https://raw.githubusercontent.com/arturgadelshin/wakeword_miluy_dom/refs/heads/main/stream_state_internal_quant.json
+      id: muliy_dom
+  vad:
+    #probability_cutoff: 0.05
+  on_wake_word_detected:
+    - media_player.speaker.play_on_device_media_file:
+        media_file: wake_sound_file
+        announcement: true
+    - wait_until:
+        not:
+          - media_player.is_announcing:
+    - delay: 150ms
+    #- microphone.unmute: external_mic
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+
+# =============== VOICE ASSISTANT ===============
+voice_assistant:
+  id: voice_asst
+  microphone: external_mic
+  micro_wake_word: mww
+  media_player: speaker_media_player_id
+  noise_suppression_level: 4 # Оставил 4 пока что
+  auto_gain: 5dBFS # Было 31 31dBFS 
+  volume_multiplier: 1.0 #25.0
+  on_wake_word_detected:
+    - media_player.speaker.play_on_device_media_file:
+        media_file: wake_sound_file
+        announcement: true
+    # - wait_until:
+    #     not:
+    #    - delay: 200ms
+    #- microphone.unmute: external_mic
+  on_idle:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 0
+        duration: 0.0s  
+
+  on_start:
+    - if:
+        condition:
+          lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - micro_wake_word.stop:
+    #- delay: 200ms
+    #- microphone.unmute: external_mic
+
+  on_listening:
+    - light.turn_on:
+        id: led_ring
+        blue: 80%
+        red: 80%
+        green: 80%
+        brightness: 80%
+        effect: wakeword
+   
+  on_tts_start:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 20
+        duration: 0.0s
+    #- delay: 200ms
+
+  on_tts_end:
+    - wait_until:
+        not:
+          speaker.is_playing:
+            id: external_speaker
+    - delay: 100ms
+    #- microphone.unmute: external_mic
+
+
+  on_end:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 0
+        duration: 0.0s
+    - if:
+        condition:
+          lambda: return id(wake_word_engine_location).state == "On device";
+        then:
+          - micro_wake_word.start:
+          - script.execute: reset_led
+        else:
+          - script.execute: reset_led
+    #- microphone.unmute: external_mic
+
+  on_error:
+    - light.turn_on:
+        id: led_ring
+        blue: 0%
+        red: 100%
+        green: 0%
+        brightness: 80%
+        effect: none
+    - media_player.speaker.play_on_device_media_file:
+        media_file: error_sound_file
+        announcement: true
+    - wait_until:
+        not:
+          - media_player.is_announcing:
+    - delay: 100ms
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 0
+        duration: 0.5s
+    - media_player.play: speaker_media_player_id
+    - delay: 0.5s
+    #- microphone.unmute: external_mic
+    - script.execute: reset_led
+
+# =============== SCRIPTS ===============
+script:
+  - id: reset_led
+    mode: restart
+    then:
+      - delay: 50ms
+      - if:
+          condition:
+            switch.is_on: night_mode
+          then:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 30%
+                effect: none
+          else:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 80%
+                effect: none
+
+
+
+# =============== SWITCHES ===============
+switch:
+  - platform: template
+    name: Night Mode Switch
+    id: night_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - script.execute: reset_led
+    on_turn_off:
+      - script.execute: reset_led
+
+  - platform: template
+    name: Amp AMP
+    id: amp_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: pa_ctrl
+    on_turn_off:
+      - output.turn_off: pa_ctrl
+
+  - platform: template
+    name: Mute DAC
+    id: dac_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: dac_ctrl
+    on_turn_off:
+      - output.turn_off: dac_ctrl
+
+  - platform: template
+    name: Reset DSP
+    id: reset_dsp_cx
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: reset_dsp
+    on_turn_off:
+      - output.turn_off: reset_dsp
+
+# =============== LIGHT ===============
+light:
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "${friendly_name} Light"
+    pin: GPIO27
+    num_leds: 24
+    rmt_channel: 2  # Добавлено - канал RMT от 0 до 7
+    rgb_order: GRB
+    chipset: ws2812
+    default_transition_length: 0s
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+      - addressable_twinkle:
+          name: "Working"
+          twinkle_probability: 80%
+          progress_interval: 50ms
+      - addressable_color_wipe:
+          name: "Wakeword"
+          colors:
+            - red: 0%
+              green: 100%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 40ms
+          reverse: false
+      - addressable_color_wipe:
+          name: "Power"
+          colors:
+            - red: 100%
+              green: 0%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 50ms
+          reverse: false
+
+
+# =============== BINARY SENSORS ===============
+binary_sensor:
+  # Audio Jack Plugged sensor
+  - platform: gpio
+    id: jack_plugged
+    # Debouncing it a bit because it can be activated back and forth as you plug the audio jack
+    filters:
+      - delayed_on: 200ms
+      - delayed_off: 200ms
+    pin:
+      number: GPIO21 # PJ_DET
+    # When the jack is plugged in:
+    on_press:
+      - lambda: id(jack_plugged_recently) = true;
+      - delay: 200ms
+      - lambda: id(jack_plugged_recently) = false;
+    # When the jack is unplugged:
+    on_release:
+      - lambda: id(jack_unplugged_recently) = true;
+      - delay: 200ms
+      - lambda: id(jack_unplugged_recently) = false;
+
+
+# =============== GLOBALS ===============
+globals:
+  # Global variable tracking if the jack has been plugged touched.
+  - id: jack_plugged_recently
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # Global variable tracking if the jack has been unplugged touched.
+  - id: jack_unplugged_recently
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+
+# =============== SENSOR ===============
+sensor:
+  - platform: sound_level
+    passive: True
+    microphone: external_mic
+    #duration_measurement: 150
+    peak:
+      name: "Peak Loudness"
+    # rms:
+    #   name: "Average Loudness"
+
+  - platform: uptime
+    type: seconds
+    name: "Uptime Sensor"
+
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal, dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  - platform: copy # Reports the WiFi signal strength in %
+    source_id: wifi_signal_db
+    name: "WiFi Signal, %"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+    device_class: ""
+
+#  - platform: template
+#    name: "${friendly_name} Free Heap"
+#    lambda: |-
+#      #include <esp_heap_caps.h>
+#      return heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024.0;
+#    unit_of_measurement: "kB"
+#    update_interval: 10s
+
+#  - platform: template
+#    name: "${friendly_name} Free PSRAM"
+#    lambda: |-
+#      #include <esp_heap_caps.h>
+#      return heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024.0;
+#    unit_of_measurement: "kB"
+#    update_interval: 10s
+
+# =============== SELECT ===============
+select:
+  - platform: template
+    entity_category: config
+    name: Wake word engine location
+    id: wake_word_engine_location
+    optimistic: true
+    restore_value: true
+    options:
+      - In Home Assistant
+      - On device
+    initial_option: In Home Assistant
+    #initial_option: On device
+    on_value:
+      - if:
+          condition:
+            lambda: return x == "In Home Assistant";
+          then:
+            - micro_wake_word.stop 
+            - voice_assistant.stop
+            - delay: 500ms
+            - lambda: |-
+                id(voice_asst).set_use_wake_word(true);
+            - voice_assistant.start_continuous:
+            - script.execute: reset_led
+      - if:
+          condition:
+            lambda: return x == "On device";
+          then:
+            - lambda: |-
+                id(voice_asst).set_use_wake_word(false);
+            - voice_assistant.stop
+            - delay: 500ms
+            - micro_wake_word.start
+            - script.execute: reset_led
+
+# =============== BUTTON ===============
+button:
+  - platform: restart
+    name: "Restart module"
