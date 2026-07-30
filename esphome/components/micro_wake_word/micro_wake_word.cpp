@@ -305,8 +305,8 @@ void MicroWakeWord::loop() {
           return;
         }
 
-        xTaskCreate(MicroWakeWord::inference_task, "mww", INFERENCE_TASK_STACK_SIZE, (void *) this,
-                    INFERENCE_TASK_PRIORITY, &this->inference_task_handle_);
+        xTaskCreatePinnedToCore(MicroWakeWord::inference_task, "mww", INFERENCE_TASK_STACK_SIZE, (void *) this,
+                    INFERENCE_TASK_PRIORITY, &this->inference_task_handle_, 1);
 
         if (this->inference_task_handle_ == nullptr) {
           FrontendFreeStateContents(&this->frontend_state_);  // Deallocate frontend state
@@ -428,12 +428,12 @@ void MicroWakeWord::process_probabilities_() {
 #ifdef USE_MICRO_WAKE_WORD_VAD
         if (vad_state.detected) {
 #endif
-          xQueueSend(this->detection_queue_, &wake_word_state, portMAX_DELAY);
+          xQueueSend(this->detection_queue_, &wake_word_state, pdMS_TO_TICKS(10));
           model->reset_probabilities();
 #ifdef USE_MICRO_WAKE_WORD_VAD
         } else {
           wake_word_state.blocked_by_vad = true;
-          xQueueSend(this->detection_queue_, &wake_word_state, portMAX_DELAY);
+          xQueueSend(this->detection_queue_, &wake_word_state, pdMS_TO_TICKS(10));
         }
 #endif
       }

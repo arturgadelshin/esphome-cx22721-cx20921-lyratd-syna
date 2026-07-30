@@ -34,7 +34,7 @@ class CXI2SMicrophone : public microphone::Microphone, public Component {
   volatile bool task_running_{false};
 
   static void mic_task(void *arg);
-  void read_loop();
+  size_t read_loop();
   void flush_buffers();
 };
 

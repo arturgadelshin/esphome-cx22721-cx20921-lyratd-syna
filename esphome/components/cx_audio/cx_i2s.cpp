@@ -9,6 +9,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <esp_task_wdt.h>
+#include <esp_timer.h>
 
 extern "C" {
 #include <va_dsp.h>
@@ -92,7 +93,7 @@ void CXI2SMicrophone::stop() {
   this->task_running_ = false;
 
   if (this->stop_semaphore_ != nullptr) {
-    if (xSemaphoreTake(this->stop_semaphore_, pdMS_TO_TICKS(500)) != pdTRUE) {
+    if (xSemaphoreTake(this->stop_semaphore_, pdMS_TO_TICKS(50)) != pdTRUE) {
       ESP_LOGW(TAG, "Timeout waiting for task to stop");
     }
   }
@@ -110,7 +111,7 @@ void CXI2SMicrophone::flush_buffers() {
   uint8_t discard[640];
   size_t bytes_read;
 
-  for (int i = 0; i < 60; i++) {
+  for (int i = 0; i < 10; i++) {
     i2s_read(I2S_NUM_1, discard, sizeof(discard), &bytes_read, pdMS_TO_TICKS(10));
   }
 
@@ -124,9 +125,19 @@ void CXI2SMicrophone::mic_task(void *arg) {
 
   ESP_LOGI(TAG, "Mic task running on core %d", xPortGetCoreID());
 
+  uint32_t bytes_acc = 0;
+  int64_t last_log = esp_timer_get_time();
+
   while (self->task_running_) {
-    self->read_loop();
+    bytes_acc += self->read_loop();
     vTaskDelay(pdMS_TO_TICKS(1));
+    int64_t now = esp_timer_get_time();
+    if (now - last_log >= 1000000) {
+      uint32_t rate = (uint32_t) ((uint64_t) bytes_acc * 1000000 / (uint64_t) (now - last_log));
+      ESP_LOGI(TAG, "[mic_rate] %u bytes/s  (%u%% realtime, expect ~32000)", rate, rate * 100 / 32000);
+      bytes_acc = 0;
+      last_log = now;
+    }
   }
 
   ESP_LOGI(TAG, "Mic task exiting");
@@ -138,14 +149,14 @@ void CXI2SMicrophone::mic_task(void *arg) {
   vTaskDelete(nullptr);
 }
 
-void CXI2SMicrophone::read_loop() {
+size_t CXI2SMicrophone::read_loop() {
   uint8_t stereo_buffer[640];
   size_t bytes_read = 0;
 
   esp_err_t err = i2s_read(I2S_NUM_1, stereo_buffer, sizeof(stereo_buffer), &bytes_read, pdMS_TO_TICKS(10));
 
   if (err != ESP_OK || bytes_read == 0) {
-    return;
+    return 0;
   }
 
   size_t samples = bytes_read / 4;
@@ -160,6 +171,7 @@ void CXI2SMicrophone::read_loop() {
   if (!mono_data.empty()) {
     this->data_callbacks_.call(mono_data);
   }
+  return mono_data.size();
 }
 
 bool CXI2SMicrophone::set_mic_gain(float mic_gain) {
