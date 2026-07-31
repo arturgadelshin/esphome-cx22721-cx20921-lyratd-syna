@@ -31,10 +31,12 @@ class CXI2SMicrophone : public microphone::Microphone, public Component {
 
   TaskHandle_t mic_task_handle_{nullptr};
   SemaphoreHandle_t stop_semaphore_{nullptr};
+  SemaphoreHandle_t ref_mutex_{nullptr};
   volatile bool task_running_{false};
+  int ref_count_{0};
 
   static void mic_task(void *arg);
-  void read_loop();
+  size_t read_loop();
   void flush_buffers();
 };
 

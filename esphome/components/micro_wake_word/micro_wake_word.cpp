@@ -23,7 +23,7 @@ static const size_t DATA_TIMEOUT_MS = 50;
 
 static const uint32_t RING_BUFFER_DURATION_MS = 1000;  // Было120
 
-static const uint32_t INFERENCE_TASK_STACK_SIZE = 3072;
+static const uint32_t INFERENCE_TASK_STACK_SIZE = 5120;
 static const UBaseType_t INFERENCE_TASK_PRIORITY = 6;  // было 3, а у cx_mic_task - 5
 
 enum EventGroupBits : uint32_t {
@@ -305,8 +305,8 @@ void MicroWakeWord::loop() {
           return;
         }
 
-        xTaskCreate(MicroWakeWord::inference_task, "mww", INFERENCE_TASK_STACK_SIZE, (void *) this,
-                    INFERENCE_TASK_PRIORITY, &this->inference_task_handle_);
+        xTaskCreatePinnedToCore(MicroWakeWord::inference_task, "mww", INFERENCE_TASK_STACK_SIZE, (void *) this,
+                    INFERENCE_TASK_PRIORITY, &this->inference_task_handle_, 1);
 
         if (this->inference_task_handle_ == nullptr) {
           FrontendFreeStateContents(&this->frontend_state_);  // Deallocate frontend state
@@ -353,7 +353,8 @@ void MicroWakeWord::start() {
   }
 
   if (this->is_running()) {
-    ESP_LOGW(TAG, "Wake word detection is already running");
+    ESP_LOGD(TAG, "Wake word detection is already running, marking for restart");
+    this->pending_start_ = true;
     return;
   }
 
@@ -428,12 +429,12 @@ void MicroWakeWord::process_probabilities_() {
 #ifdef USE_MICRO_WAKE_WORD_VAD
         if (vad_state.detected) {
 #endif
-          xQueueSend(this->detection_queue_, &wake_word_state, portMAX_DELAY);
+          xQueueSend(this->detection_queue_, &wake_word_state, pdMS_TO_TICKS(10));
           model->reset_probabilities();
 #ifdef USE_MICRO_WAKE_WORD_VAD
         } else {
           wake_word_state.blocked_by_vad = true;
-          xQueueSend(this->detection_queue_, &wake_word_state, portMAX_DELAY);
+          xQueueSend(this->detection_queue_, &wake_word_state, pdMS_TO_TICKS(10));
         }
 #endif
       }
