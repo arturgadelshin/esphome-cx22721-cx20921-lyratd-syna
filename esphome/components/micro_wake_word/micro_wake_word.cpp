@@ -23,7 +23,7 @@ static const size_t DATA_TIMEOUT_MS = 50;
 
 static const uint32_t RING_BUFFER_DURATION_MS = 1000;  // Было120
 
-static const uint32_t INFERENCE_TASK_STACK_SIZE = 3072;
+static const uint32_t INFERENCE_TASK_STACK_SIZE = 5120;
 static const UBaseType_t INFERENCE_TASK_PRIORITY = 6;  // было 3, а у cx_mic_task - 5
 
 enum EventGroupBits : uint32_t {
@@ -353,7 +353,8 @@ void MicroWakeWord::start() {
   }
 
   if (this->is_running()) {
-    ESP_LOGW(TAG, "Wake word detection is already running");
+    ESP_LOGD(TAG, "Wake word detection is already running, marking for restart");
+    this->pending_start_ = true;
     return;
   }
 

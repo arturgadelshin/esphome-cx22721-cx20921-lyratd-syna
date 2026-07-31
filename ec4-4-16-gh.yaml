@@ -61,24 +61,23 @@ esp32:
       CONFIG_ESP32_SPIRAM_SUPPORT: "y"
       CONFIG_SPIRAM_BOOT_INIT: "y"
       CONFIG_SPIRAM_USE_MALLOC: "y"
-      # CONFIG_ESP_TASK_WDT_TIMEOUT_S: "30"
 
 external_components:
   # equivalent shorthand for GitHub
   - source:
       type: local
       path: esphome/components
-    components: [cx_i2s, cx_audio]
+    components: [cx_i2s, cx_audio, micro_wake_word]
 
 psram:
   mode: quad
   speed: 80MHz
 
 logger:
-  # evel: DEBUG
+  level: INFO
 
 api:
-  reboot_timeout: 1min
+  reboot_timeout: 3min
 
 ota:
   - platform: esphome
@@ -199,7 +198,7 @@ media_player:
 # =============== MICRO WAKE WORD ===============
 micro_wake_word:
   id: mww
-  stop_after_detection: false
+  stop_after_detection: true
   models:
     - model: ${model_2}
       id: ${id_2}
@@ -219,6 +218,8 @@ micro_wake_word:
           or:
             - voice_assistant.is_running:
             - media_player.is_announcing:
+            - not:
+                api.connected:
         then:
           # - voice_assistant.stop:
           - logger.log: "Ignoring wake word - busy"
@@ -270,11 +271,11 @@ voice_assistant:
 
   on_end:
     - script.execute: reset_led
-    - micro_wake_word.stop
-    - delay: 200ms
-    - micro_wake_word.start
+    - delay: 500ms
+    - micro_wake_word.start: {}
 
   on_error:
+    - delay: 500ms
     - light.turn_on:
         id: led_ring
         blue: 0%
@@ -282,16 +283,9 @@ voice_assistant:
         green: 0%
         brightness: 80%
         effect: none
-    - media_player.speaker.play_on_device_media_file:
-        media_file: error_sound_file
-        announcement: true
-    - wait_until:
-        not:
-          - media_player.is_announcing:
+    - delay: 500ms
     - script.execute: reset_led
-    - micro_wake_word.stop
-    - delay: 200ms
-    - micro_wake_word.start
+    - micro_wake_word.start: {}
 
 # =============== SCRIPTS ===============
 script:

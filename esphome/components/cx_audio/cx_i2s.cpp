@@ -55,13 +55,18 @@ void CXI2SMicrophone::setup() {
   }
 
   this->stop_semaphore_ = xSemaphoreCreateBinary();
+  this->ref_mutex_ = xSemaphoreCreateMutex();
 }
 
 void CXI2SMicrophone::start() {
+  xSemaphoreTake(this->ref_mutex_, portMAX_DELAY);
+  this->ref_count_++;
   if (this->task_running_) {
-    ESP_LOGW(TAG, "Microphone task already running");
+    ESP_LOGI(TAG, "Microphone task already running (ref_count=%d)", this->ref_count_);
+    xSemaphoreGive(this->ref_mutex_);
     return;
   }
+  xSemaphoreGive(this->ref_mutex_);
 
   ESP_LOGI(TAG, "Starting microphone task...");
 
@@ -83,6 +88,17 @@ void CXI2SMicrophone::start() {
 }
 
 void CXI2SMicrophone::stop() {
+  xSemaphoreTake(this->ref_mutex_, portMAX_DELAY);
+  if (this->ref_count_ > 0) {
+    this->ref_count_--;
+  }
+  if (this->ref_count_ > 0) {
+    ESP_LOGI(TAG, "Microphone still in use (ref_count=%d), not stopping", this->ref_count_);
+    xSemaphoreGive(this->ref_mutex_);
+    return;
+  }
+  xSemaphoreGive(this->ref_mutex_);
+
   if (!this->task_running_) {
     this->state_ = microphone::STATE_STOPPED;
     return;
