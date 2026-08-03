@@ -1,0 +1,435 @@
+substitutions:
+  name: "ec4-3-17-gh"
+  friendly_name: "ec4-3-17-gh"
+  wifi_ssid: "Keenetic_Garazh"
+  wifi_password: "96925980"
+  wifi_ip: "192.168.211.123"
+  ota_pass: "jwDYNRbSjcP2Mfsr"
+  model_1: "https://raw.githubusercontent.com/arturgadelshin/wakeword_miluy_dom/refs/heads/main/stream_state_internal_quant_3_17_gh.json"
+  id_1: muliy_dom_3_17_gh
+  model_2: "https://raw.githubusercontent.com/arturgadelshin/wakeword_miluy_dom_2/refs/heads/main/stream_state_internal_quant_3_17_gh.json"
+  id_2: muliy_dom2_3_17_gh
+  external_media_player_id: speaker_media_player_id
+
+esphome:
+  name: "ec4-3-17-gh"
+  min_version: 2023.11.0
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    - priority: -100
+      then:
+        - delay: 10s
+        - micro_wake_word.start:
+        - output.turn_on: pa_ctrl
+
+esp32:
+  board: esp32dev
+  flash_size: 16MB
+  partitions: partitions.csv
+  framework:
+    type: esp-idf
+    version: 4.4.8
+    platform_version: 5.4.0
+    sdkconfig_options:
+      CONFIG_FREERTOS_NUMBER_OF_CORES: "2"
+      CONFIG_ESP32_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM_BOOT_INIT: "y"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+
+external_components:
+  - source:
+      type: local
+      path: esphome/components
+    components: [cx_audio, cx_i2s, micro_wake_word]
+
+psram:
+  mode: quad
+  speed: 80MHz
+
+logger:
+  level: INFO
+
+api:
+  reboot_timeout: 3min
+
+ota:
+  - platform: esphome
+    password: ${ota_pass}
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "$ IP Address"
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  power_save_mode: none
+  ap:
+    ssid: ${name}
+    password: "12345678"
+
+captive_portal:
+
+output:
+  - platform: gpio
+    id: pa_ctrl
+    pin: GPIO22
+  - platform: gpio
+    id: dac_ctrl
+    pin: GPIO4
+  - platform: gpio
+    id: reset_dsp
+    pin: GPIO19
+
+cx_audio:
+  id: my_cx_audio
+  use_firmware: false
+
+speaker:
+  - platform: cx_i2s
+    id: external_speaker
+    cx_audio_id: my_cx_audio
+    sample_rate: "16000"
+    num_channels: "2"
+  - id: mixing_speaker
+    platform: mixer
+    output_speaker: external_speaker
+    source_speakers:
+      - id: announcement_mixing_input
+      - id: media_mixing_input
+    num_channels: "2"
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    sample_rate: 16000
+    num_channels: "2"
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    sample_rate: 16000
+    num_channels: "2"
+
+microphone:
+  - platform: cx_i2s
+    id: external_mic
+    mic_gain: -38.0
+    cx_audio_id: my_cx_audio
+
+media_player:
+  - platform: speaker
+    name: "Speaker Media Player"
+    id: speaker_media_player_id
+    volume_increment: 0.05
+    volume_min: 0.4
+    volume_max: 1.0
+    announcement_pipeline:
+      speaker: announcement_resampling_speaker
+      num_channels: "2"
+      format: WAV
+      sample_rate: 16000
+    media_pipeline:
+      speaker: media_resampling_speaker
+      num_channels: "2"
+      format: WAV
+      sample_rate: 16000
+    files:
+      - id: wake_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/awake_2.wav
+      - id: error_sound_file
+        file: https://github.com/arturgadelshin/sound_ai_home/raw/main/sounds/error_3.wav
+    on_play:
+      - switch.turn_on: dac_mode
+    on_announcement:
+      - switch.turn_on: dac_mode
+    on_idle:
+      - delay: 750ms
+      - switch.turn_off: dac_mode
+      - micro_wake_word.start:
+
+micro_wake_word:
+  id: mww
+  stop_after_detection: true
+  models:
+    - model: ${model_2}
+      id: ${id_2}
+  microphone:
+    microphone: external_mic
+    channels: 0
+    gain_factor: 2
+  on_wake_word_detected:
+    - logger.log: "Wake word detected, checking voice assistant state."
+    - if:
+        condition:
+          or:
+            - voice_assistant.is_running:
+            - media_player.is_announcing:
+            - not:
+                api.connected:
+        then:
+          - logger.log: "Ignoring wake word - busy or no API"
+        else:
+          - logger.log: "Voice Assistant is NOT running, checking for announcements."
+          - if:
+              condition:
+                media_player.is_announcing:
+                  id: ${external_media_player_id}
+              then:
+                - media_player.stop:
+                    announcement: true
+                    id: ${external_media_player_id}
+              else:
+                - media_player.speaker.play_on_device_media_file:
+                    media_file: wake_sound_file
+                    announcement: true
+                - wait_until:
+                    not:
+                      - media_player.is_announcing:
+                          id: ${external_media_player_id}
+                - delay: 300ms
+                - voice_assistant.start:
+                    wake_word: !lambda return wake_word;
+
+voice_assistant:
+  id: voice_asst
+  microphone:
+    microphone: external_mic
+    channels: 0
+    gain_factor: 1
+  micro_wake_word: mww
+  media_player: speaker_media_player_id
+  noise_suppression_level: 4
+  auto_gain: 0dBFS
+  volume_multiplier: 0.1
+  on_listening:
+    - light.turn_on:
+        id: led_ring
+        blue: 0%
+        red: 0%
+        green: 100%
+        brightness: 80%
+        effect: none
+  on_end:
+    - script.execute: reset_led
+    - delay: 500ms
+    - if:
+        condition:
+          not:
+            media_player.is_announcing:
+        then:
+          - micro_wake_word.start: {}
+  on_error:
+    - delay: 500ms
+    - light.turn_on:
+        id: led_ring
+        blue: 0%
+        red: 100%
+        green: 0%
+        brightness: 80%
+        effect: none
+    - delay: 500ms
+    - script.execute: reset_led
+    - delay: 1s
+    - if:
+        condition:
+          not:
+            media_player.is_announcing:
+        then:
+          - micro_wake_word.start: {}
+
+script:
+  - id: reset_led
+    mode: restart
+    then:
+      - delay: 50ms
+      - if:
+          condition:
+            switch.is_on: night_mode
+          then:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 30%
+                effect: none
+          else:
+            - light.turn_on:
+                id: led_ring
+                blue: 100%
+                red: 0%
+                green: 0%
+                brightness: 80%
+                effect: none
+
+switch:
+  - platform: template
+    name: Night Mode Switch
+    id: night_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - script.execute: reset_led
+    on_turn_off:
+      - script.execute: reset_led
+  - platform: template
+    name: Amp AMP
+    id: amp_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: pa_ctrl
+    on_turn_off:
+      - output.turn_off: pa_ctrl
+  - platform: template
+    name: Mute DAC
+    id: dac_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: dac_ctrl
+    on_turn_off:
+      - output.turn_off: dac_ctrl
+  - platform: template
+    name: Reset DSP
+    id: reset_dsp_cx
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - output.turn_on: reset_dsp
+    on_turn_off:
+      - output.turn_off: reset_dsp
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "${friendly_name} Light"
+    pin: GPIO27
+    num_leds: 24
+    rmt_channel: 2
+    rgb_order: GRB
+    chipset: ws2812
+    default_transition_length: 0s
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+      - addressable_twinkle:
+          name: "Working"
+          twinkle_probability: 80%
+          progress_interval: 50ms
+      - addressable_color_wipe:
+          name: "Wakeword"
+          colors:
+            - red: 0%
+              green: 100%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 40ms
+          reverse: false
+      - addressable_color_wipe:
+          name: "Power"
+          colors:
+            - red: 100%
+              green: 0%
+              blue: 0%
+              num_leds: 12
+          add_led_interval: 50ms
+          reverse: false
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal, dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal, %"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+    device_class: ""
+
+select:
+  - platform: template
+    name: "Sensitivity Muliy_dom_2"
+    optimistic: true
+    initial_option: 0.70 sensitive
+    restore_value: true
+    entity_category: config
+    options:
+      - 0.01 sensitive
+      - 0.02 sensitive
+      - 0.03 sensitive
+      - 0.04 sensitive
+      - 0.05 sensitive
+      - 0.10 sensitive
+      - 0.20 sensitive
+      - 0.30 sensitive
+      - 0.40 sensitive
+      - 0.50 sensitive
+      - 0.55 sensitive
+      - 0.60 sensitive
+      - 0.65 sensitive
+      - 0.70 sensitive
+      - 0.75 sensitive
+      - 0.80 sensitive
+      - 0.85 sensitive
+      - 0.90 sensitive
+      - 0.95 sensitive
+      - 0.98 sensitive
+    on_value:
+      lambda: |-
+        if (x == "0.01 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(3);
+        } else if (x == "0.02 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(6);
+        } else if (x == "0.03 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(9);
+        } else if (x == "0.04 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(11);
+        } else if (x == "0.05 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(13);
+        } else if (x == "0.10 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(26);
+        } else if (x == "0.20 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(51);
+        } else if (x == "0.30 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(76);
+        } else if (x == "0.40 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(102);
+        } else if (x == "0.50 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(128);
+        } else if (x == "0.55 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(140);
+        } else if (x == "0.60 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(153);
+        } else if (x == "0.65 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(166);
+        } else if (x == "0.70 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(179);
+        } else if (x == "0.75 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(191);
+        } else if (x == "0.80 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(204);
+        } else if (x == "0.85 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(217);
+        } else if (x == "0.90 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(230);
+        } else if (x == "0.95 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(242);
+        } else if (x == "0.98 sensitive") {
+          id(muliy_dom2_3_17_gh).set_probability_cutoff(250);
+        }
+
+button:
+  - platform: restart
+    name: "Restart module"
